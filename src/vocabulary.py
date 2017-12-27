@@ -1,0 +1,39 @@
+class Vocabulary(object):
+    '''
+    Simple vocabulary wrapper class
+    Inspired by Faghri (2017)
+    '''
+    def __init__(self, vocab_path):
+        self.word2idx = {}
+        self.idx2word = {}
+        self.idx = 0
+        self.add_word('<pad>')
+        self.add_word('<start>')
+        self.add_word('<end>')
+        self.build_vocab(vocab_path)
+
+    def add_word(self, word):
+        if word not in self.word2idx:
+            self.word2idx[word] = self.idx
+            self.idx2word[self.idx] = word
+            self.idx += 1
+
+    def build_vocab(self, vocab_path):
+        with open(vocab_path, 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                self.add_word(line.split('\n')[0])
+
+    def __call__(self, word):
+        if word not in self.word2idx:
+            return self.word2idx['<en_unk>']
+        return self.word2idx[word]
+
+    def __len__(self):
+        return len(self.word2idx)
+
+    def getWord(self, idx):
+        if idx not in self.idx2word:
+            return self.idx2word[self.word2idx['<en_unk>']]
+        else:
+            return self.idx2word[idx]
