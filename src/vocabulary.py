@@ -37,3 +37,6 @@ class Vocabulary(object):
             return self.idx2word[self.word2idx['<en_unk>']]
         else:
             return self.idx2word[idx]
+
+    def getPadding(self):
+        return self.word2idx['<pad>']

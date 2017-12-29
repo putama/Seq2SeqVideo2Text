@@ -1,15 +1,14 @@
 import torch
 import torch.utils.data as data
-import torchvision.transforms as transforms
 import numpy as np
-from vocabulary import Vocabulary
 
 class MSVDPrecompDataset(data.Dataset):
     """
     Load precomputed features of video frames
     of MSVD video text dataset
     """
-    def __init__(self, data_path, data_split, vocab):
+    def __init__(self, data_path, data_split, vocab, opt):
+        self.opt = opt
         self.vocab = vocab
         self.data_path = data_path+'msvd/'
         self.features_path = self.data_path+'features_precomputed/yt_allframes_vgg_fc7_'+data_split+'.txt'
@@ -18,7 +17,24 @@ class MSVDPrecompDataset(data.Dataset):
         self.videoid2frames = self.txt2videosfeat(self.features_path)
         print 'load video captions...'
         self.captiontuples = self.txt2captions(self.captions_path)
-        print len(self.videoid2frames)
+
+        # assert whether videos in captions and frames features match
+        assert set(self.videoid2frames.keys()) == set(map(lambda x: x[0], self.captiontuples))
+
+        self.length = len(self.captiontuples)
+
+    def __getitem__(self, index):
+        videoid = self.captiontuples[index][0]
+        captionraw = self.captiontuples[index][1]
+        featuresraw = self.videoid2frames[videoid]
+
+        # trim frames in case total length exceed opt.seq_maxlen
+        if len(featuresraw) + len(captionraw) > self.opt.seq_maxlen:
+            print 'exceeding!'
+            exceednum = self.opt.seq_maxlen - (len(featuresraw) + len(captionraw))
+            featuresraw = featuresraw[0:-exceednum]
+
+        return featuresraw, captionraw, videoid
 
     def txt2videosfeat(self, features_path):
         videoid2frames = {}
@@ -50,11 +66,36 @@ class MSVDPrecompDataset(data.Dataset):
                 splits = line.split('\t')
                 videoid = splits[0]
                 captionstr = splits[1]
-                caption = map(lambda x: self.vocab(x), captionstr.split())
+                caption = []
+                caption.append(self.vocab('<start>'))
+                caption.extend(map(lambda x: self.vocab(x), captionstr.split()))
+                caption.append(self.vocab('<end>'))
                 captiontuples.append((videoid, caption))
         return captiontuples
 
-data_path = '../data/'
-vocab_path = data_path+'msvd/coco_vocabulary.txt'
-vocab = Vocabulary(vocab_path)
-dataset = MSVDPrecompDataset(data_path, 'val', vocab)
+    def __len__(self):
+        return self.length
+
+def collate_precomputed(data):
+    '''Build mini-batch tensors of captions and features list '''
+    print 'collated'
+    # sorted by caption length for later pad packed sequence
+    data.sort(key=lambda x: len(x[0])+len(x[1]), reverse=True)
+    featuresraws, captionraws, videoids = zip(*data)
+
+    # forward and backward padding of caption sequences
+    lengths = [len(i[0])+len(i[1]) for i in data]
+    captions = torch.zeros(len(captionraws), max(lengths)).long()
+    for i, cap in enumerate(captionraws):
+        start = len(featuresraws[i])
+        end = lengths[i]
+        captions[i, start:end] = torch.Tensor(cap)
+
+    # forward padding of frame features
+    features = torch.zeros(len(featuresraws), max(lengths), len(featuresraws[0][0]))
+    for i, feat in enumerate(featuresraws):
+        start = 0
+        end = len(featuresraws[i])
+        features[i, start:end, :] = torch.Tensor(featuresraws[i]).unsqueeze(0)
+
+    return features, captions, videoids, lengths
