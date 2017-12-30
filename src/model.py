@@ -44,6 +44,9 @@ class V2S(nn.Module):
         self.params = self.parameters()
         self.optimizer = torch.optim.Adam(self.params, opt.learning_rate)
 
+        if torch.cuda.is_available():
+            self.cuda()
+
         # define loss history
         self.loss_history = []
 
