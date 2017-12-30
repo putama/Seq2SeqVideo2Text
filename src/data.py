@@ -26,15 +26,17 @@ class MSVDPrecompDataset(data.Dataset):
     def __getitem__(self, index):
         videoid = self.captiontuples[index][0]
         captionraw = self.captiontuples[index][1]
+        inpcapraw = captionraw[0:-1]
+        targetcapraw = captionraw[1:]
         featuresraw = self.videoid2frames[videoid]
 
         # trim frames in case total length exceed opt.seq_maxlen
-        if len(featuresraw) + len(captionraw) > self.opt.seq_maxlen:
+        if len(featuresraw) + len(inpcapraw) > self.opt.seq_maxlen:
             print 'exceeding!'
-            exceednum = self.opt.seq_maxlen - (len(featuresraw) + len(captionraw))
+            exceednum = self.opt.seq_maxlen - (len(featuresraw) + len(inpcapraw))
             featuresraw = featuresraw[0:-exceednum]
 
-        return featuresraw, captionraw, videoid
+        return featuresraw, inpcapraw, targetcapraw, videoid
 
     def txt2videosfeat(self, features_path):
         videoid2frames = {}
@@ -78,18 +80,22 @@ class MSVDPrecompDataset(data.Dataset):
 
 def collate_precomputed(data):
     '''Build mini-batch tensors of captions and features list '''
-    print 'collated'
     # sorted by caption length for later pad packed sequence
     data.sort(key=lambda x: len(x[0])+len(x[1]), reverse=True)
-    featuresraws, captionraws, videoids = zip(*data)
+    featuresraws, inpcapraws, targetcapraws, videoids = zip(*data)
 
     # forward and backward padding of caption sequences
     lengths = [len(i[0])+len(i[1]) for i in data]
-    captions = torch.zeros(len(captionraws), max(lengths)).long()
-    for i, cap in enumerate(captionraws):
+    inpcaptions = torch.zeros(len(inpcapraws), max(lengths)).long()
+    for i, cap in enumerate(inpcapraws):
         start = len(featuresraws[i])
         end = lengths[i]
-        captions[i, start:end] = torch.Tensor(cap)
+        inpcaptions[i, start:end] = torch.Tensor(cap)
+    targetcaptions = torch.zeros(len(targetcapraws), max(lengths)).long()
+    for i, cap in enumerate(targetcapraws):
+        start = len(featuresraws[i])
+        end = lengths[i]
+        targetcaptions[i, start:end] = torch.Tensor(cap)
 
     # forward padding of frame features
     features = torch.zeros(len(featuresraws), max(lengths), len(featuresraws[0][0]))
@@ -98,4 +104,4 @@ def collate_precomputed(data):
         end = len(featuresraws[i])
         features[i, start:end, :] = torch.Tensor(featuresraws[i]).unsqueeze(0)
 
-    return features, captions, videoids, lengths
+    return features, inpcaptions, targetcaptions, videoids, lengths
