@@ -44,6 +44,9 @@ class V2S(nn.Module):
         self.params = self.parameters()
         self.optimizer = torch.optim.Adam(self.params, opt.learning_rate)
 
+        # define loss history
+        self.loss_history = []
+
     def trainstep(self, imgfeatures, inputs, targets, lengths):
         targets = Variable(targets)
 
@@ -59,7 +62,9 @@ class V2S(nn.Module):
         if self.grad_clip > 0: # clipping to avoid exploding gradient
             clip_grad_norm(self.params, self.grad_clip)
         self.optimizer.step()
-        print 'train step'
+
+        # log the current loss measure
+        self.loss_history.append(loss.data[0])
 
     def forward(self, imgfeatures, inputs, lengths, volatile=False):
         imgfeatures = Variable(imgfeatures, volatile=volatile)
