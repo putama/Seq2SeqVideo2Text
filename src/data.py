@@ -32,7 +32,6 @@ class MSVDPrecompDataset(data.Dataset):
 
         # trim frames in case total length exceed opt.seq_maxlen
         if len(featuresraw) + len(inpcapraw) > self.opt.seq_maxlen:
-            print 'exceeding!'
             exceednum = self.opt.seq_maxlen - (len(featuresraw) + len(inpcapraw))
             featuresraw = featuresraw[0:-exceednum]
 

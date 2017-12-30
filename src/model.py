@@ -49,6 +49,8 @@ class V2S(nn.Module):
 
     def trainstep(self, imgfeatures, inputs, targets, lengths):
         targets = Variable(targets)
+        if torch.cuda.is_available():
+            targets = targets.cuda()
 
         self.optimizer.zero_grad() # reset the gradients
         outsoftmax = self.forward(imgfeatures, inputs, lengths)
@@ -69,6 +71,10 @@ class V2S(nn.Module):
     def forward(self, imgfeatures, inputs, lengths, volatile=False):
         imgfeatures = Variable(imgfeatures, volatile=volatile)
         inputs = Variable(inputs, volatile=volatile)
+
+        if torch.cuda.is_available():
+            imgfeatures = imgfeatures.cuda()
+            inputs = inputs.cuda()
 
         # linear transformation of f7 vector to lower dimension
         imgfeatures = self.vid_input_fc(imgfeatures)
