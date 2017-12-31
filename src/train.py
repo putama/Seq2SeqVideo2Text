@@ -24,7 +24,7 @@ vocab_path = data_path+'msvd/coco_vocabulary.txt'
 vocab = Vocabulary(vocab_path)
 opt.vocab_size = len(vocab)
 
-dataset = data.MSVDPrecompDataset(data_path, 'training', vocab, opt)
+dataset = data.MSVDPrecompDataset(data_path, 'train', vocab, opt)
 dataloader = torch.utils.data.DataLoader(dataset=dataset,
                                          batch_size=opt.batch_size,
                                          shuffle=True,
@@ -46,6 +46,6 @@ for i in range(opt.epoch):
             print 'Epoch: {}, Iter: {}/{}, Current loss: {}, PPL: {}, Epoch time elapsed: {}s'.format(
                 str(i+1), str(j+1), str(len(dataloader)), avglosses, ppl, str(time.time()-start)
             )
-            predsent, evalloss = model.forward_eval(features, inputs, targets, lengths)
     # TODO training checkpointing
     # TODO evaluating current model
+    # predsent, evalloss = model.forward_eval(features, inputs, targets, lengths)

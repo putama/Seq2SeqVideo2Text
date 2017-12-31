@@ -158,10 +158,17 @@ class V2S(nn.Module):
 
     def init_hidden(self, batchsize):
         if self.rnn_cell.lower() == 'lstm': # tuple of h and c cells
-            hiddenvectors = (Variable(torch.zeros(batchsize, 1, self.hiddensize)),
-                             Variable(torch.zeros(batchsize, 1, self.hiddensize)))
+            if torch.cuda.is_available():
+                hiddenvectors = \
+                    (Variable(torch.zeros(batchsize, 1, self.hiddensize)).cuda(),
+                     Variable(torch.zeros(batchsize, 1, self.hiddensize)).cuda())
+            else:
+                hiddenvectors = \
+                    (Variable(torch.zeros(batchsize, 1, self.hiddensize)),
+                     Variable(torch.zeros(batchsize, 1, self.hiddensize)))
         elif self.rnn_cell.lower() == 'gru': # only h cell
-            hiddenvectors = Variable(torch.zeros(batchsize, 1, self.hiddensize))
-        if torch.cuda.is_available():
-            hiddenvectors = hiddenvectors.cuda()
+            if torch.cuda.is_available():
+                hiddenvectors = Variable(torch.zeros(batchsize, 1, self.hiddensize)).cuda()
+            else:
+                hiddenvectors = Variable(torch.zeros(batchsize, 1, self.hiddensize))
         return hiddenvectors
