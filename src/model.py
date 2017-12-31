@@ -51,18 +51,14 @@ class V2S(nn.Module):
         self.loss_history = []
 
     def trainstep(self, imgfeatures, inputs, targets, lengths):
-        targets = Variable(targets)
+        targets = Variable(targets, volatile=False)
         if torch.cuda.is_available():
             targets = targets.cuda()
 
         self.optimizer.zero_grad() # reset the gradients
         outsoftmax = self.forward(imgfeatures, inputs, lengths)
 
-        # reshape softmax output to 2D and targets to 1D
-        outsoftmax = outsoftmax.view(len(lengths) * max(lengths), -1)
-        targets = targets.view(len(lengths) * max(lengths))
-
-        loss = self.criterion(outsoftmax, targets)
+        loss = self.compute_loss(outsoftmax, targets, len(lengths), max(lengths))
         loss.backward()
         if self.grad_clip > 0: # clipping to avoid exploding gradient
             clip_grad_norm(self.params, self.grad_clip)
@@ -71,25 +67,32 @@ class V2S(nn.Module):
         # log the current loss measure
         self.loss_history.append(loss.data[0])
 
-    def forward(self, imgfeatures, inputs, lengths, volatile=False):
-        imgfeatures = Variable(imgfeatures, volatile=volatile)
-        inputs = Variable(inputs, volatile=volatile)
+    def compute_loss(self, outsoftmax, targets, batchsize, seqlength):
+        # reshape softmax output to 2D and targets to 1D
+        outsoftmax = outsoftmax.view(batchsize * seqlength, -1)
+        targets = targets.view(batchsize * seqlength)
+        return self.criterion(outsoftmax, targets)
 
-        if torch.cuda.is_available():
-            imgfeatures = imgfeatures.cuda()
-            inputs = inputs.cuda()
-
+    def encode_video(self, imgfeatures, lengths):
         # linear transformation of f7 vector to lower dimension
         imgfeatures = self.vid_input_fc(imgfeatures)
-
         # encode the sequence of frames features
         # applies sequence packing for more efficient pytorch implementation
         outvidrnn, _ = self.videoRNN(pack(imgfeatures, lengths, batch_first=True))
         outvidrnn, _ = unpack(outvidrnn, batch_first=True)
+        return outvidrnn
+
+    '''the forward function only used during the training'''
+    def forward(self, imgfeatures, inputs, lengths):
+        imgfeatures = Variable(imgfeatures, volatile=False)
+        inputs = Variable(inputs, volatile=False)
+        if torch.cuda.is_available():
+            imgfeatures = imgfeatures.cuda()
+            inputs = inputs.cuda()
+        outvidrnn = self.encode_video(imgfeatures, lengths)
 
         # get word vector representation
         wordvectors = self.embedding(inputs)
-
         # concatenate output of first rnn with word vectors
         inpsentrnn = torch.cat((outvidrnn, wordvectors), 2) # concatenate on dim #3
 
@@ -98,8 +101,45 @@ class V2S(nn.Module):
         outsentrnn, _ = unpack(outsentrnn, batch_first=True)
 
         outlogit = self.word_output_fc(outsentrnn)
-        output = F.log_softmax(outlogit, dim=2)
-        return output
+        outputs = F.log_softmax(outlogit, dim=2)
+        return outputs
+
+    def forward_eval(self, imgfeatures, inputs, targets, lengths):
+        imgfeatures = Variable(imgfeatures, volatile=True)
+        inputs = Variable(inputs, volatile=True)
+        targets = Variable(targets, volatile=True)
+        if torch.cuda.is_available():
+            imgfeatures = imgfeatures.cuda()
+            inputs = inputs.cuda()
+        outvidrnn = self.encode_video(imgfeatures, lengths)
+
+        # initialize the hidden vector and pass on the batch size
+        hiddenvectors = self.init_hidden(len(lengths))
+        # initialize first word vector which is <pad>
+        wordvector = self.embedding(inputs[:,0:1])
+        # iterate through the max length the RNN is unrolled
+        predsent = []
+        losses = []
+        for i in range(max(lengths)):
+            # get vector representation of a single word token
+            vidvector = outvidrnn[:, i:i+1, :]
+            inp = torch.cat((vidvector, wordvector), dim=2)
+            out, hiddenvectors = self.sentenceRNN(inp, hiddenvectors)
+            outlogit = self.word_output_fc(out)
+            outsoftmax = F.log_softmax(outlogit, dim=2)
+            predictedwords = outsoftmax.data.topk(1)[1][:,:,0]
+            predsent.append(predictedwords)
+
+            # update word vector for next time step
+            wordvector = self.embedding(Variable(predictedwords))
+
+            # compute single step NLL-loss
+            # contiguous() to ensure the tensor located on the same memory block
+            losses.append(self.compute_loss(outsoftmax,
+                                            targets[:,i:i+1].contiguous(),
+                                            len(lengths), 1))
+        # return the predicted sentences and average loss over all time steps
+        return predsent, float(sum(losses))/len(losses)
 
     def init_weights(self):
         """Xavier initialization for the fully connected networks"""
@@ -115,3 +155,13 @@ class V2S(nn.Module):
         self.word_output_fc.bias.data.fill_(0)
         # word embedding weights initialization
         self.embedding.weight.data.uniform_(-0.08, 0.08)
+
+    def init_hidden(self, batchsize):
+        if self.rnn_cell.lower() == 'lstm': # tuple of h and c cells
+            hiddenvectors = (Variable(torch.zeros(batchsize, 1, self.hiddensize)),
+                             Variable(torch.zeros(batchsize, 1, self.hiddensize)))
+        elif self.rnn_cell.lower() == 'gru': # only h cell
+            hiddenvectors = Variable(torch.zeros(batchsize, 1, self.hiddensize))
+        if torch.cuda.is_available():
+            hiddenvectors = hiddenvectors.cuda()
+        return hiddenvectors
