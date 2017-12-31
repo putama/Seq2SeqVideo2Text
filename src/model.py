@@ -139,7 +139,7 @@ class V2S(nn.Module):
                                             targets[:,i:i+1].contiguous(),
                                             len(lengths), 1))
         # return the predicted sentences and average loss over all time steps
-        return predsent, float(sum(losses))/len(losses)
+        return torch.cat(tuple(predsent), dim=1), float(sum(losses))/len(losses)
 
     def init_weights(self):
         """Xavier initialization for the fully connected networks"""

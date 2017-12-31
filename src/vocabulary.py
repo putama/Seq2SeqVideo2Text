@@ -40,3 +40,12 @@ class Vocabulary(object):
 
     def getPadding(self):
         return self.word2idx['<pad>']
+
+    def translateSentences(self, sentences, lengths):
+        translated = [''] * len(lengths)
+        for k in range(max(lengths)):
+            for m in range(len(sentences)):
+                word1 = self.getWord(sentences[m,k])
+                if not word1 in ['<pad>']:
+                    translated[m] = translated[m]+word1+' '
+        return translated

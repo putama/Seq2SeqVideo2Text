@@ -13,9 +13,9 @@ class MSVDPrecompDataset(data.Dataset):
         self.data_path = data_path+'msvd/'
         self.features_path = self.data_path+'features_precomputed/yt_allframes_vgg_fc7_'+data_split+'.txt'
         self.captions_path = self.data_path+'captions/sents_'+data_split+'_lc_nopunc.txt'
-        print 'load video features...'
+        print '[{}] load video features...'.format(data_split)
         self.videoid2frames = self.txt2videosfeat(self.features_path)
-        print 'load video captions...'
+        print '[{}] load video captions...'.format(data_split)
         self.captiontuples = self.txt2captions(self.captions_path)
 
         # assert whether videos in captions and frames features match
@@ -26,16 +26,14 @@ class MSVDPrecompDataset(data.Dataset):
     def __getitem__(self, index):
         videoid = self.captiontuples[index][0]
         captionraw = self.captiontuples[index][1]
-        inpcapraw = captionraw[0:-1]
-        targetcapraw = captionraw[1:]
         featuresraw = self.videoid2frames[videoid]
 
         # trim frames in case total length exceed opt.seq_maxlen
-        if len(featuresraw) + len(inpcapraw) > self.opt.seq_maxlen:
-            exceednum = self.opt.seq_maxlen - (len(featuresraw) + len(inpcapraw))
+        if len(featuresraw) + len(captionraw) - 1 > self.opt.seq_maxlen:
+            exceednum = self.opt.seq_maxlen - (len(featuresraw) + len(captionraw))
             featuresraw = featuresraw[0:-exceednum]
 
-        return featuresraw, inpcapraw, targetcapraw, videoid
+        return featuresraw, captionraw, videoid
 
     def txt2videosfeat(self, features_path):
         videoid2frames = {}
@@ -81,18 +79,18 @@ def collate_precomputed(data):
     '''Build mini-batch tensors of captions and features list '''
     # sorted by caption length for later pad packed sequence
     data.sort(key=lambda x: len(x[0])+len(x[1]), reverse=True)
-    featuresraws, inpcapraws, targetcapraws, videoids = zip(*data)
+    featuresraws, capraws, videoids = zip(*data)
 
     # forward and backward padding of caption sequences
-    lengths = [len(i[0])+len(i[1]) for i in data]
-    inpcaptions = torch.zeros(len(inpcapraws), max(lengths)).long()
-    for i, cap in enumerate(inpcapraws):
+    lengths = [len(i[0])+len(i[1])-1 for i in data]
+    inpcaptions = torch.zeros(len(capraws), max(lengths)).long()
+    for i, cap in enumerate(capraws): # include all except the last token
         start = len(featuresraws[i])
         end = lengths[i]
-        inpcaptions[i, start:end] = torch.Tensor(cap)
-    targetcaptions = torch.zeros(len(targetcapraws), max(lengths)).long()
-    for i, cap in enumerate(targetcapraws):
-        start = len(featuresraws[i])
+        inpcaptions[i, start:end] = torch.Tensor(cap[0:-1])
+    targetcaptions = torch.zeros(len(capraws), max(lengths)).long()
+    for i, cap in enumerate(capraws): # include all tokens start early by 1
+        start = len(featuresraws[i])-1
         end = lengths[i]
         targetcaptions[i, start:end] = torch.Tensor(cap)
 
@@ -104,3 +102,12 @@ def collate_precomputed(data):
         features[i, start:end, :] = torch.Tensor(featuresraws[i]).unsqueeze(0)
 
     return features, inpcaptions, targetcaptions, videoids, lengths
+
+def get_dataloader(data_path, vocab, opt, stage='train'):
+    dataset = MSVDPrecompDataset(data_path, stage, vocab, opt)
+    dataloader = torch.utils.data.DataLoader(dataset=dataset,
+                                             batch_size=opt.batch_size,
+                                             shuffle=True,
+                                             num_workers=4,
+                                             collate_fn=collate_precomputed)
+    return dataloader
