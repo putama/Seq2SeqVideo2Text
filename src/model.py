@@ -49,76 +49,48 @@ class V2S(nn.Module):
 
         # define loss history & epoch counter
         self.loss_history = []
+        self.val_loss_history = []
+        self.captions_samples = None
         self.epoch_count = 0
 
-    def trainstep(self, imgfeatures, inputs, targets, lengths):
+    def forward(self, imgfeatures, inputs, targets, lengths, phase='train'):
+        imgfeatures = Variable(imgfeatures)
+        inputs = Variable(inputs)
         targets = Variable(targets)
         if torch.cuda.is_available():
+            imgfeatures = imgfeatures.cuda()
+            inputs = inputs.cuda()
             targets = targets.cuda()
-
-        self.optimizer.zero_grad() # reset the gradients
-        outsoftmax = self.forward(imgfeatures, inputs, lengths)
-
-        loss = self.compute_loss(outsoftmax, targets, len(lengths), max(lengths))
-        loss.backward()
-        if self.grad_clip > 0: # clipping to avoid exploding gradient
-            clip_grad_norm(self.params, self.grad_clip)
-        self.optimizer.step()
-
-        # log the current loss measure
-        self.loss_history.append(loss.data[0])
-
-    def compute_loss(self, outsoftmax, targets, batchsize, seqlength):
-        # reshape softmax output to 2D and targets to 1D
-        outsoftmax = outsoftmax.view(batchsize * seqlength, -1)
-        targets = targets.view(batchsize * seqlength)
-        return self.criterion(outsoftmax, targets)
-
-    def encode_video(self, imgfeatures, lengths):
         # linear transformation of f7 vector to lower dimension
         imgfeatures = self.vid_input_fc(imgfeatures)
         # encode the sequence of frames features
         # applies sequence packing for more efficient pytorch implementation
         outvidrnn, _ = self.videoRNN(pack(imgfeatures, lengths, batch_first=True))
         outvidrnn, _ = unpack(outvidrnn, batch_first=True)
-        return outvidrnn
 
-    '''the forward function only used during the training'''
-    def forward(self, imgfeatures, inputs, lengths):
-        imgfeatures = Variable(imgfeatures)
-        inputs = Variable(inputs)
-        if torch.cuda.is_available():
-            imgfeatures = imgfeatures.cuda()
-            inputs = inputs.cuda()
-        outvidrnn = self.encode_video(imgfeatures, lengths)
-
-        # get word vector representation
-        wordvectors = self.embedding(inputs)
-        # concatenate output of first rnn with word vectors
-        inpsentrnn = torch.cat((outvidrnn, wordvectors), 2) # concatenate on dim #3
-
-        # feedforward to the sentence RNN
-        outsentrnn, _ = self.sentenceRNN(pack(inpsentrnn, lengths, batch_first=True))
-        outsentrnn, _ = unpack(outsentrnn, batch_first=True)
-
-        outlogit = self.word_output_fc(outsentrnn)
-        outputs = F.log_softmax(outlogit, dim=2)
-        return outputs
-
-    def forward_eval(self, imgfeatures, inputs, targets, lengths):
-        with torch.no_grad():
-            imgfeatures = Variable(imgfeatures)
-            inputs = Variable(inputs)
-            targets = Variable(targets)
-            if torch.cuda.is_available():
-                imgfeatures = imgfeatures.cuda()
-                inputs = inputs.cuda()
-            outvidrnn = self.encode_video(imgfeatures, lengths)
-
+        if phase == 'train':
+            self.optimizer.zero_grad()  # reset the gradients
+            # get word vector representation of entire sentence
+            wordvectors = self.embedding(inputs)
+            # concatenate output of first rnn with word vectors
+            inpsentrnn = torch.cat((outvidrnn, wordvectors), 2)  # concatenate on dim #3
+            # feedforward to the sentence RNN
+            outsentrnn, _ = self.sentenceRNN(pack(inpsentrnn, lengths, batch_first=True))
+            outsentrnn, _ = unpack(outsentrnn, batch_first=True)
+            outlogit = self.word_output_fc(outsentrnn)
+            outputs = F.log_softmax(outlogit, dim=2)
+            loss = self.compute_loss(outputs, targets, len(lengths), max(lengths))
+            loss.backward()
+            if self.grad_clip > 0:  # clipping to avoid exploding gradient
+                clip_grad_norm(self.params, self.grad_clip)
+            self.optimizer.step()
+            # log the current loss measure
+            self.loss_history.append(loss.data[0])
+        elif phase == 'val': # time-step wise decoding
             # initialize the hidden vector and pass on the batch size
             hiddenvectors = self.init_hidden(len(lengths))
             # initialize first word vector which is <pad>
-            wordvector = self.embedding(inputs[:,0:1])
+            wordvector = self.embedding(inputs[:, 0:1])
             # iterate through the max length the RNN is unrolled
             predsent = []
             losses = []
@@ -141,8 +113,14 @@ class V2S(nn.Module):
                 if torch.cuda.is_available():
                     currentTarget = currentTarget.cuda()
                 losses.append(self.compute_loss(outsoftmax, currentTarget, len(lengths), 1))
-            # return the predicted sentences and average loss over all time steps
-            return torch.cat(tuple(predsent), dim=1), float(sum(losses))/len(losses)
+                self.captions_samples = torch.cat(tuple(predsent), dim=1)
+                self.val_loss_history.append(float(sum(losses)) / len(losses))
+
+    def compute_loss(self, outsoftmax, targets, batchsize, seqlength):
+        # reshape softmax output to 2D and targets to 1D
+        outsoftmax = outsoftmax.view(batchsize * seqlength, -1)
+        targets = targets.view(batchsize * seqlength)
+        return self.criterion(outsoftmax, targets)
 
     def init_weights(self):
         """Xavier initialization for the fully connected networks"""

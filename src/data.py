@@ -103,8 +103,8 @@ def collate_precomputed(data):
 
     return features, inpcaptions, targetcaptions, videoids, lengths
 
-def get_dataloader(data_path, vocab, opt, stage='train'):
-    dataset = MSVDPrecompDataset(data_path, stage, vocab, opt)
+def get_dataloader(data_path, vocab, opt, phase='train'):
+    dataset = MSVDPrecompDataset(data_path, phase, vocab, opt)
     dataloader = torch.utils.data.DataLoader(dataset=dataset,
                                              batch_size=opt.batch_size,
                                              shuffle=True,
