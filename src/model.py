@@ -47,11 +47,12 @@ class V2S(nn.Module):
         if torch.cuda.is_available():
             self.cuda()
 
-        # define loss history
+        # define loss history & epoch counter
         self.loss_history = []
+        self.epoch_count = 0
 
     def trainstep(self, imgfeatures, inputs, targets, lengths):
-        targets = Variable(targets, volatile=False)
+        targets = Variable(targets)
         if torch.cuda.is_available():
             targets = targets.cuda()
 
@@ -84,8 +85,8 @@ class V2S(nn.Module):
 
     '''the forward function only used during the training'''
     def forward(self, imgfeatures, inputs, lengths):
-        imgfeatures = Variable(imgfeatures, volatile=False)
-        inputs = Variable(inputs, volatile=False)
+        imgfeatures = Variable(imgfeatures)
+        inputs = Variable(inputs)
         if torch.cuda.is_available():
             imgfeatures = imgfeatures.cuda()
             inputs = inputs.cuda()
@@ -105,41 +106,43 @@ class V2S(nn.Module):
         return outputs
 
     def forward_eval(self, imgfeatures, inputs, targets, lengths):
-        imgfeatures = Variable(imgfeatures, volatile=True)
-        inputs = Variable(inputs, volatile=True)
-        targets = Variable(targets, volatile=True)
-        if torch.cuda.is_available():
-            imgfeatures = imgfeatures.cuda()
-            inputs = inputs.cuda()
-        outvidrnn = self.encode_video(imgfeatures, lengths)
+        with torch.no_grad():
+            imgfeatures = Variable(imgfeatures)
+            inputs = Variable(inputs)
+            targets = Variable(targets)
+            if torch.cuda.is_available():
+                imgfeatures = imgfeatures.cuda()
+                inputs = inputs.cuda()
+            outvidrnn = self.encode_video(imgfeatures, lengths)
 
-        # initialize the hidden vector and pass on the batch size
-        hiddenvectors = self.init_hidden(len(lengths))
-        # initialize first word vector which is <pad>
-        wordvector = self.embedding(inputs[:,0:1])
-        # iterate through the max length the RNN is unrolled
-        predsent = []
-        losses = []
-        for i in range(max(lengths)):
-            # get vector representation of a single word token
-            vidvector = outvidrnn[:, i:i+1, :]
-            inp = torch.cat((vidvector, wordvector), dim=2)
-            out, hiddenvectors = self.sentenceRNN(inp, hiddenvectors)
-            outlogit = self.word_output_fc(out)
-            outsoftmax = F.log_softmax(outlogit, dim=2)
-            predictedwords = outsoftmax.data.topk(1)[1][:,:,0]
-            predsent.append(predictedwords)
+            # initialize the hidden vector and pass on the batch size
+            hiddenvectors = self.init_hidden(len(lengths))
+            # initialize first word vector which is <pad>
+            wordvector = self.embedding(inputs[:,0:1])
+            # iterate through the max length the RNN is unrolled
+            predsent = []
+            losses = []
+            for i in range(max(lengths)):
+                # get vector representation of a single word token
+                vidvector = outvidrnn[:, i:i+1, :]
+                inp = torch.cat((vidvector, wordvector), dim=2)
+                out, hiddenvectors = self.sentenceRNN(inp, hiddenvectors)
+                outlogit = self.word_output_fc(out)
+                outsoftmax = F.log_softmax(outlogit, dim=2)
+                predictedwords = outsoftmax.data.topk(1)[1][:,:,0]
+                predsent.append(predictedwords)
 
-            # update word vector for next time step
-            wordvector = self.embedding(Variable(predictedwords))
+                # update word vector for next time step
+                wordvector = self.embedding(Variable(predictedwords))
 
-            # compute single step NLL-loss
-            # contiguous() to ensure the tensor located on the same memory block
-            losses.append(self.compute_loss(outsoftmax,
-                                            targets[:,i:i+1].contiguous(),
-                                            len(lengths), 1))
-        # return the predicted sentences and average loss over all time steps
-        return torch.cat(tuple(predsent), dim=1), float(sum(losses))/len(losses)
+                # compute single step NLL-loss
+                # contiguous() to ensure the tensor located on the same memory block
+                currentTarget = targets[:,i:i+1].contiguous()
+                if torch.cuda.is_available():
+                    currentTarget = currentTarget.cuda()
+                losses.append(self.compute_loss(outsoftmax, currentTarget, len(lengths), 1))
+            # return the predicted sentences and average loss over all time steps
+            return torch.cat(tuple(predsent), dim=1), float(sum(losses))/len(losses)
 
     def init_weights(self):
         """Xavier initialization for the fully connected networks"""
@@ -157,18 +160,21 @@ class V2S(nn.Module):
         self.embedding.weight.data.uniform_(-0.08, 0.08)
 
     def init_hidden(self, batchsize):
+        # in most recent version of pytorch the order of dimension of hidden
+        # is always seq_length, batch_size, and hidden_size regardless of
+        # batch_first argument values
         if self.rnn_cell.lower() == 'lstm': # tuple of h and c cells
             if torch.cuda.is_available():
                 hiddenvectors = \
-                    (Variable(torch.zeros(batchsize, 1, self.hiddensize)).cuda(),
-                     Variable(torch.zeros(batchsize, 1, self.hiddensize)).cuda())
+                    (Variable(torch.zeros(1, batchsize, self.hiddensize)).cuda(),
+                     Variable(torch.zeros(1, batchsize, self.hiddensize)).cuda())
             else:
                 hiddenvectors = \
-                    (Variable(torch.zeros(batchsize, 1, self.hiddensize)),
-                     Variable(torch.zeros(batchsize, 1, self.hiddensize)))
+                    (Variable(torch.zeros(1, batchsize, self.hiddensize)),
+                     Variable(torch.zeros(1, batchsize, self.hiddensize)))
         elif self.rnn_cell.lower() == 'gru': # only h cell
             if torch.cuda.is_available():
-                hiddenvectors = Variable(torch.zeros(batchsize, 1, self.hiddensize)).cuda()
+                hiddenvectors = Variable(torch.zeros(1, batchsize, self.hiddensize)).cuda()
             else:
-                hiddenvectors = Variable(torch.zeros(batchsize, 1, self.hiddensize))
+                hiddenvectors = Variable(torch.zeros(1, batchsize, self.hiddensize))
         return hiddenvectors

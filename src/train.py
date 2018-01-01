@@ -41,8 +41,9 @@ for i in range(opt.epoch):
             ppl = math.exp(avglosses)
             print 'Epoch: {:02d}, Iter: {:04d}/{:04d}, ' \
                   'Current loss: {:06.2f}, PPL: {:06.2f}, ' \
-                  'Epoch time: {:06.2f}s'.format(i+1, j+1, len(trainloader),
+                  'Epoch time: {:06.2f}s'.format(model.epoch_count+1, j+1, len(trainloader),
                                                  avglosses, ppl, time.time()-start)
+    model.epoch_count = model.epoch_count + 1
 
     # validating current model
     print '>>> Validating...'
