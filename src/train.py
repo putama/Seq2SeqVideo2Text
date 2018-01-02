@@ -62,8 +62,8 @@ def main():
             predsent = model.captions_samples
             vallosses.append(valloss)
             if j < opt.num_val_decoding:
-                for j, tup in enumerate(zip(vocab.translateSentences(targets, lengths),
-                                            vocab.translateSentences(predsent, lengths))):
+                for tup in zip(vocab.translateSentences(targets, lengths),
+                                vocab.translateSentences(predsent, lengths)):
                     print '> tgt : {}\n> pred: {}'.format(tup[0], tup[1])
         avgvallosses = float(sum(vallosses)) / len(vallosses)
         valppl = math.exp(avgvallosses)

@@ -100,6 +100,11 @@ class V2S(nn.Module):
             predsent = []
             losses = []
             for i in range(max(lengths)):
+                # feed in input until it sees <start>
+                for j in range(len(lengths)):
+                    if i <= startidxs[j]:
+                        wordvector[j:j + 1, 0:1, :] = self.embedding(inputs[j:j + 1, i:i + 1])
+
                 # get vector representation of a single word token
                 vidvector = outvidrnn[:, i:i+1, :]
                 inp = torch.cat((vidvector, wordvector), dim=2)
@@ -111,10 +116,6 @@ class V2S(nn.Module):
 
                 # update word vector for next time step
                 wordvector = self.embedding(Variable(predictedwords))
-                # feed in input until it sees <start>
-                for j in range(len(lengths)):
-                    if i <= startidxs[j]:
-                        wordvector[j:j+1,0:1,:] = self.embedding(inputs[j:j+1,i:i+1])
 
                 # compute single step NLL-loss
                 # contiguous() to ensure the tensor located on the same memory block
