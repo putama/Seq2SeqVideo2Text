@@ -87,6 +87,11 @@ class V2S(nn.Module):
             # log the current loss measure
             self.loss_history.append(loss.data[0])
         elif phase == 'val': # time-step wise decoding
+            # calculate the indexes of <start> tokens
+            startidxs = []
+            for i in range(len(lengths)):
+                startidxs.append(next((idx for idx, x in enumerate(inputs[i]) if x), None))
+
             # initialize the hidden vector and pass on the batch size
             hiddenvectors = self.init_hidden(len(lengths))
             # initialize first word vector which is <pad>
@@ -106,6 +111,10 @@ class V2S(nn.Module):
 
                 # update word vector for next time step
                 wordvector = self.embedding(Variable(predictedwords))
+                # feed in input until it sees <start>
+                for j in range(len(lengths)):
+                    if i <= startidxs[j]:
+                        wordvector[j:j+1,0:1,:] = self.embedding(inputs[j:j+1,i:i+1])
 
                 # compute single step NLL-loss
                 # contiguous() to ensure the tensor located on the same memory block

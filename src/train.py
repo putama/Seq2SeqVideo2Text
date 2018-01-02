@@ -16,7 +16,7 @@ def main():
     parser.add_argument('--embedding_size', default=500, type=int)
     parser.add_argument('--hidden_size', default=1000, type=int)
     parser.add_argument('--learning_rate', default=.0001, type=float, help='Initial learning rate.')
-    parser.add_argument('--lr_update', default=2, type=int, help='Epoch frequency of decaying lr')
+    parser.add_argument('--lr_update', default=5, type=int, help='Epoch frequency of decaying lr')
     parser.add_argument('--grad_clip', default=2., type=float, help='Gradient clipping threshold.')
     parser.add_argument('--seq_maxlen', default=80)
     parser.add_argument('--num_val_decoding', default=2, help='Number of steps in which caption is printed')
@@ -27,8 +27,8 @@ def main():
     vocab = Vocabulary(vocab_path)
     opt.vocab_size = len(vocab)
 
-    trainloader = data.get_dataloader(data_path, vocab, opt, 'debug')
-    valloader = data.get_dataloader(data_path, vocab, opt, 'debug')
+    trainloader = data.get_dataloader(data_path, vocab, opt, 'train')
+    valloader = data.get_dataloader(data_path, vocab, opt, 'val')
 
     # initialize the model
     model = V2S(opt)
@@ -46,9 +46,9 @@ def main():
                 ppl = math.exp(avglosses)
                 print 'Epoch: {:02d}, Iter: {:04d}/{:04d}, ' \
                       'Current loss: {:06.2f}, PPL: {:06.2f}, ' \
-                      'Epoch time: {:06.2f}s, Lr: {}'.format(model.epoch_count+1, j+1,
-                                                     len(trainloader), avglosses, ppl,
-                                                     time.time()-start, opt.learning_rate)
+                      'Epoch time: {:06.2f}s, Lr: {:08.7f}'.format(model.epoch_count+1, j+1,
+                            len(trainloader), avglosses, ppl,
+                            time.time()-start, opt.learning_rate)
         model.epoch_count = model.epoch_count + 1
 
         # validating current model

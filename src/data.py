@@ -82,17 +82,17 @@ def collate_precomputed(data):
     featuresraws, capraws, videoids = zip(*data)
 
     # forward and backward padding of caption sequences
-    lengths = [len(i[0])+len(i[1])-1 for i in data]
+    lengths = [len(i[0])+len(i[1]) for i in data]
     inpcaptions = torch.zeros(len(capraws), max(lengths)).long()
     for i, cap in enumerate(capraws): # include all except the last token
         start = len(featuresraws[i])
         end = lengths[i]
-        inpcaptions[i, start:end] = torch.Tensor(cap[0:-1])
+        inpcaptions[i, start:end] = torch.Tensor(cap)
     targetcaptions = torch.zeros(len(capraws), max(lengths)).long()
     for i, cap in enumerate(capraws): # include all tokens start early by 1
-        start = len(featuresraws[i])-1
-        end = lengths[i]
-        targetcaptions[i, start:end] = torch.Tensor(cap)
+        start = len(featuresraws[i])
+        end = lengths[i]-1
+        targetcaptions[i, start:end] = torch.Tensor(cap[1:])
 
     # forward padding of frame features
     features = torch.zeros(len(featuresraws), max(lengths), len(featuresraws[0][0]))

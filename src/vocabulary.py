@@ -48,4 +48,6 @@ class Vocabulary(object):
                 word1 = self.getWord(sentences[m,k])
                 if not word1 in ['<pad>']:
                     translated[m] = translated[m]+word1+' '
+                else:
+                    translated[m] = translated[m]+'+ '
         return translated
