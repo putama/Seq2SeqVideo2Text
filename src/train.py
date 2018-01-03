@@ -11,6 +11,7 @@ def main():
     parser.add_argument('--epoch', default=20)
     parser.add_argument('--batch_size', default=8)
     parser.add_argument('--print_freq', default=50)
+    parser.add_argument('--checkpoint_freq', default=2)
     parser.add_argument('--rnn_cell', default='lstm', type=str)
     parser.add_argument('--feature_size', default=4096, type=int)
     parser.add_argument('--embedding_size', default=500, type=int)
@@ -70,7 +71,10 @@ def main():
         print '============================================='
         print 'Epoch: {:02d}, Validation loss: {:06.2f},\tPPL: {:06.2f}'.format(i+1, avgvallosses, valppl)
         print '============================================='
+
         # TODO training checkpointing
+        if (i+1) % opt.checkpoint_freq == 0:
+            torch.save(model, 'V2S_epoch{}.pt'.format(i+1))
 
 def adjust_learning_rate(opt, optimizer, epoch):
     """Sets the learning rate to the initial LR

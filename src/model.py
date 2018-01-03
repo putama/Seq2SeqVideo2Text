@@ -9,6 +9,7 @@ from torch.nn.utils.clip_grad import clip_grad_norm
 
 # Video-to-Sentence model
 class V2S(nn.Module):
+    # TODO fix val loss calculation
     # TODO word padding uses zero vectors instead
     # TODO normalization mechanism
     # TODO attentive decoder
