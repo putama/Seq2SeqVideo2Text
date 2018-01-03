@@ -29,7 +29,7 @@ def main():
     opt.vocab_size = len(vocab)
 
     trainloader = data.get_dataloader(data_path, vocab, opt, 'train')
-    valloader = data.get_dataloader(data_path, vocab, opt, 'val')
+    valloader = data.get_dataloader(data_path, vocab, opt, 'train')
 
     # initialize the model
     model = V2S(opt)
@@ -72,9 +72,9 @@ def main():
         print 'Epoch: {:02d}, Validation loss: {:06.2f},\tPPL: {:06.2f}'.format(i+1, avgvallosses, valppl)
         print '============================================='
 
-        # TODO training checkpointing
+        # training checkpointing
         if (i+1) % opt.checkpoint_freq == 0:
-            torch.save(model, 'V2S_epoch{}.pt'.format(i+1))
+            torch.save(model.state_dict(), 'V2S_epoch_{}.pt'.format(i+1))
 
 def adjust_learning_rate(opt, optimizer, epoch):
     """Sets the learning rate to the initial LR
